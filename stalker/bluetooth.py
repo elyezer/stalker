@@ -1,3 +1,4 @@
+import Queue as queue
 import serial
 import struct
 import threading
@@ -23,6 +24,9 @@ BLUETOOTH_LE_EVENTS = {
     0x04: 'LE Read Remote Used Features Complete',
     0x05: 'LE Long Term Key Requested',
 }
+
+
+IO_TIMEOUT = 2
 
 
 class Packet(object):
@@ -86,11 +90,12 @@ class EventPacket(Packet):
 class BluetoothDevice(object):
     def __init__(self, port=None, baudrate=57600):
         self.ready = False
-        self.serial = serial.Serial(port, baudrate)
+        self.serial = serial.Serial(port, baudrate, timeout=IO_TIMEOUT)
+        self.packet_queue = queue.Queue()
 
     def init_device(self):
         packet = CommandPacket(0xFE00, 'BB16s16sL', 8, 3, '\x00', '\x00', 1)
-        self.serial.write(packet.serialize())
+        self.packet_queue.put(packet)
 
     def _start_reader(self):
         self._reader_alive = True
@@ -109,6 +114,8 @@ class BluetoothDevice(object):
         self.transmitter_thread.setDaemon(True)
         self.transmitter_thread.start()
 
+        self.init_device()
+
     def stop(self):
         self.alive = False
 
@@ -120,7 +127,11 @@ class BluetoothDevice(object):
     def reader(self):
         try:
             while self.alive and self._reader_alive:
-                data = self.serial.read(1)
+                data = self.serial.read()
+
+                if not data:
+                    continue
+
                 packet_type = struct.unpack('<B', data)[0]
 
                 if packet_type == EventPacket.packet_type:
@@ -146,4 +157,13 @@ class BluetoothDevice(object):
             raise
 
     def writer(self):
-        pass
+        try:
+            while self.alive:
+                try:
+                    packet = self.packet_queue.get(timeout=IO_TIMEOUT)
+                    self.serial.write(packet.serialize())
+                except queue.Empty:
+                    pass
+        except:
+            self.alive = False
+            raise
