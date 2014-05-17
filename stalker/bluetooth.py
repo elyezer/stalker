@@ -59,7 +59,7 @@ class CommandPacket(Packet):
 
     def serialize(self):
         fmt = '<BHB%s' % self.fmt
-        size = struct.calcsize(fmt)
+        size = struct.calcsize('<%s' % self.fmt)
         return struct.pack(
             fmt, self.packet_type, self.opcode, size, *self.params)
 
@@ -78,7 +78,7 @@ class EventPacket(Packet):
 
     def serialize(self):
         fmt = '<BB%s' % self.fmt
-        size = struct.calcsize(fmt)
+        size = struct.calcsize('<%s' % self.fmt)
         return struct.pack(
             fmt, self.packet_type, self.code, size, *self.params)
 
